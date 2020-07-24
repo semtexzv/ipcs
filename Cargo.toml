@@ -1,0 +1,5 @@
+[workspace]
+members = ["api", "apidefs", "cli", "codegen", "node", "runtime", "samplefun"]
+
+[patch.crates-io]
+semtexzv-ipfsapi = { path = "./ipfsapi" }

@@ -1,0 +1,3 @@
+[submodule "ipfsapi"]
+	path = ipfsapi
+	url = ./ipfsapi/

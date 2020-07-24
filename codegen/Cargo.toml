@@ -1,0 +1,13 @@
+[package]
+name = "ipcs-codegen"
+version = "0.0.0"
+authors = ["Michal Hornicky <mhornick@redhat.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+quote = "1.0"
+syn = { version = "1.0.35", features = ["full"] }

@@ -1,0 +1,53 @@
+[package]
+name = "ipcs-node"
+version = "0.0.0"
+authors = ["Michal Hornicky <mhornick@redhat.com>"]
+edition = "2018"
+
+[dependencies.ipfsapi]
+package = "semtexzv-ipfsapi"
+version = "0.4.0"
+
+[dependencies.executor]
+package = "ipcs-executor"
+path = "../executor"
+
+[dependencies.apidefs]
+package = "ipcs-apidefs"
+path = "../apidefs"
+
+[dependencies.libp2p]
+default-features = false
+version = "0.22.0"
+features = [
+"deflate",
+"dns",
+"floodsub",
+"identify",
+"kad",
+"gossipsub",
+"mdns",
+"mplex",
+"noise",
+"ping",
+"plaintext",
+"pnet",
+"request-response",
+"secio",
+"secp256k1",
+"tcp-tokio",
+"uds",
+"wasm-ext",
+"websocket",
+"yamux",
+]
+
+[dependencies]
+warp = "0.2"
+serde = { version = "*", features = ["derive"]}
+tokio = { version = "0.2", features = ["rt-core", "macros"] }
+futures = "*"
+bytes = "*"
+libc = "*"
+anyhow = "*"
+log = "*"
