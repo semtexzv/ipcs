@@ -1,4 +1,5 @@
 #![deny(unused_must_use)]
+
 use futures::future::{join, join_all};
 use ipfsapi::IpfsApi;
 
@@ -37,13 +38,26 @@ pub async fn exec(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> 
     return Ok(hash);
 }
 
-#[derive(Default)]
+/// Configuration of IPCS node.
 pub struct NodeConfig {
+    /// Disable the provided HTTP API
     pub no_api: bool,
+    /// URL pointing to IPFS node
+    pub ipfs_url: String,
 }
 
+impl Default for NodeConfig {
+    fn default() -> Self {
+        Self {
+            no_api: false,
+            ipfs_url: format!("http://localhost:5001"),
+        }
+    }
+}
+
+/// Run the node with provided config. Future should never resolve
 pub async fn run(config: NodeConfig) {
-    let api = IpfsApi::new("localhost", 5001);
+    let api = IpfsApi::new(&config.ipfs_url).unwrap();
     let api = Arc::new(api);
 
     let (tx, rx) = unbounded();

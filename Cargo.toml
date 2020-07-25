@@ -1,7 +1,11 @@
 [workspace]
 members = [
 "api", "apidefs",
-"cli", "codegen", "executor", "node", "runtime",
+"cli", "codegen",
+"executor", "node",
+"runtime",
+
+"ipfsapi",
 "examples/capitalize"
 ]
 

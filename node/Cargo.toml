@@ -1,6 +1,6 @@
 [package]
 name = "ipcs-node"
-version = "0.0.0"
+version = "0.0.1-alpha.1"
 authors = ["Michal Hornicky <semtexzv@gmail.com>"]
 repository = "https://github.com/semtexzv/ipcs"
 description = "IPCS worker node - provides HTTP API & uses libp2p for communication"
@@ -9,15 +9,15 @@ edition = "2018"
 
 [dependencies.ipfsapi]
 package = "semtexzv-ipfsapi"
-version = "0.4.0"
+version = "0.4.1-alpha.1"
 
 [dependencies.executor]
 package = "ipcs-executor"
-version = "0.0.0"
+version = "0.0.1-alpha.1"
 
 [dependencies.apidefs]
 package = "ipcs-apidefs"
-version = "0.0.0"
+version = "0.0.1-alpha.1"
 
 [dependencies.libp2p]
 default-features = false
@@ -48,7 +48,7 @@ features = [
 [dependencies]
 warp = "0.2"
 serde = { version = "1", features = ["derive"]}
-serde_json = "*"
+serde_json = "1.0.56"
 tokio = { version = "0.2", default-features = false, features = ["rt-threaded", "blocking", "macros"] }
 futures = "0.3.5"
 bytes = "0.5.6"

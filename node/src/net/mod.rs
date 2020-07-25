@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::task::Poll;
 
-use futures::SinkExt;
-use futures::{channel::mpsc::UnboundedReceiver, Future};
+use futures::{channel::mpsc::UnboundedReceiver, future::poll_fn, Future, SinkExt, StreamExt};
+
 use libp2p::{
     identify::{Identify, IdentifyEvent},
     identity,
@@ -15,19 +15,21 @@ use tokio::macros::support::Pin;
 
 use ipfsapi::IpfsApi;
 
-use crate::net::workswap::{ExecutionResult, WorkswapEvent};
-
 mod workswap;
 
+use workswap::{ExecutionResult, Workswap, WorkswapEvent};
+
+/// Network behavior describing general properties of this node
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
     #[behaviour(ignore)]
     ipfs: Arc<IpfsApi>,
-
+    /// Used to find peers on local network
     mdns: Mdns,
     ping: Ping,
     identify: Identify,
-    workswap: workswap::Workswap,
+    /// Behavior responsible for actually sending work to other nodes
+    workswap: Workswap,
 }
 
 impl NetworkBehaviourEventProcess<()> for Behaviour {
@@ -53,13 +55,7 @@ impl NetworkBehaviourEventProcess<workswap::WorkswapEvent> for Behaviour {
                 }
             }
             WorkswapEvent::WantCalc(peer, id, method, args) => {
-                log::debug!(
-                    "peer {} wants us to work on {} ({}) applied on {:?}",
-                    peer,
-                    id,
-                    method,
-                    args
-                );
+                log::debug!("peer {} wants us to work on {} ({}) applied on {:?}", peer, id, method, args);
                 self.workswap.accept(&peer, id.clone());
                 let ipfs = self.ipfs.clone();
                 let mut fin = self.workswap.queued_local_execs.clone();
@@ -83,36 +79,21 @@ impl NetworkBehaviourEventProcess<workswap::WorkswapEvent> for Behaviour {
 impl NetworkBehaviourEventProcess<PingEvent> for Behaviour {
     fn inject_event(&mut self, event: PingEvent) {
         use libp2p::ping::handler::{PingFailure, PingSuccess};
-        match event {
-            PingEvent {
-                peer,
-                result: Result::Ok(PingSuccess::Ping { rtt }),
-            } => {
-                log::info!(
-                    "ping: rtt to {} is {} ms",
-                    peer.to_base58(),
-                    rtt.as_millis()
-                );
+        let peer = event.peer;
+        match event.result {
+            Ok(PingSuccess::Ping { rtt }) => {
+                log::trace!("ping: rtt to {} is {} ms", peer.to_base58(), rtt.as_millis());
                 self.set_rtt(&peer, rtt);
             }
-            PingEvent {
-                peer,
-                result: Result::Ok(PingSuccess::Pong),
-            } => {
-                log::info!("ping: pong from {}", peer);
+            Ok(PingSuccess::Pong) => {
+                log::trace!("ping: pong from {}", peer);
             }
-            PingEvent {
-                peer,
-                result: Result::Err(PingFailure::Timeout),
-            } => {
-                log::info!("ping: timeout to {}", peer);
+            Err(PingFailure::Timeout) => {
+                log::trace!("ping: timeout to {}", peer);
                 self.remove_peer(&peer);
             }
-            PingEvent {
-                peer,
-                result: Result::Err(PingFailure::Other { error }),
-            } => {
-                log::error!("ping: failure with {}: {}", peer.to_base58(), error);
+            Err(PingFailure::Other { error }) => {
+                log::trace!("ping: failure with {}: {}", peer.to_base58(), error);
             }
         }
     }
@@ -123,13 +104,13 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for Behaviour {
         match event {
             MdnsEvent::Discovered(list) => {
                 for (peer, addr) in list {
-                    log::info!("mdns: Discovered peer {} on {:?}", peer.to_base58(), &addr);
+                    log::trace!("mdns: Discovered peer {} on {:?}", peer.to_base58(), &addr);
                     self.add_peer(peer, addr);
                 }
             }
             MdnsEvent::Expired(list) => {
                 for (peer, _) in list {
-                    log::info!("mdns: Expired peer {}", peer.to_base58());
+                    log::debug!("mdns: Expired peer {}", peer.to_base58());
                     self.remove_peer(&peer);
                 }
             }
@@ -164,11 +145,7 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
             ipfs,
             mdns: Mdns::new().unwrap(),
             ping: Ping::new(PingConfig::new()),
-            identify: Identify::new(
-                "/ipcs/0.0.0".into(),
-                "rust-ipcs".into(),
-                local_key.clone().public(),
-            ),
+            identify: Identify::new("/ipcs/0.0.0".into(), "rust-ipcs".into(), local_key.clone().public()),
             workswap: workswap::Workswap::new(),
         };
         struct Exec;
@@ -183,10 +160,9 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
     };
 
     Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
-    use futures::StreamExt;
 
     loop {
-        futures::future::poll_fn(|ctx| -> Poll<Option<()>> {
+        poll_fn(|ctx| -> Poll<Option<()>> {
             match swarm.poll_next_unpin(ctx) {
                 Poll::Ready(Some(item)) => {
                     log::info!("Event: {:?}", item);

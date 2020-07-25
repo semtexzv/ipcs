@@ -9,13 +9,8 @@ use futures::channel::{
 use futures::task::{Context, Poll};
 use futures::{AsyncRead, AsyncWrite, Future, FutureExt, StreamExt};
 use libp2p::{
-    core::{
-        connection::ConnectionId, upgrade, InboundUpgrade, Multiaddr, OutboundUpgrade, PeerId,
-        UpgradeInfo,
-    },
-    swarm::{
-        DialPeerCondition, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters,
-    },
+    core::{connection::ConnectionId, upgrade, InboundUpgrade, Multiaddr, OutboundUpgrade, PeerId, UpgradeInfo},
+    swarm::{DialPeerCondition, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters},
 };
 use multihash::MultihashDigest;
 
@@ -25,7 +20,7 @@ type Error = Box<dyn std::error::Error + Send + 'static>;
 
 #[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Message {
-    // Persistent field,
+    // Persistent fiel
     running: Vec<ExecutionID>,
 
     // Transient fields
@@ -156,6 +151,7 @@ impl PeerStats {
 }
 
 pub struct Workswap {
+    // Allows us to dispatch event from a lot of places
     events: VecDeque<NetworkBehaviourAction<Message, WorkswapEvent>>,
     pub peers: HashMap<PeerId, PeerStats>,
 
@@ -196,26 +192,15 @@ impl Workswap {
     }
 
     pub fn reject(&mut self, peer_id: &PeerId, id: ExecutionID) {
-        self.peers
-            .get_mut(peer_id)
-            .expect("Peer not found")
-            .reject(id);
+        self.peers.get_mut(peer_id).expect("Peer not found").reject(id);
     }
 
     pub fn accept(&mut self, peer_id: &PeerId, id: ExecutionID) {
-        self.peers
-            .get_mut(peer_id)
-            .expect("Peer not found")
-            .accept(id);
+        self.peers.get_mut(peer_id).expect("Peer not found").accept(id);
     }
 
     /// We want to execute a function, and pick first usable peer.
-    pub fn want_exec(
-        &mut self,
-        method: Cid,
-        args: Vec<Cid>,
-        ret: OneSender<Result<String, String>>,
-    ) {
+    pub fn want_exec(&mut self, method: Cid, args: Vec<Cid>, ret: OneSender<Result<String, String>>) {
         let mut id = multihash::Sha2_256::default();
         id.input(method.as_bytes());
         for i in &args {
@@ -306,51 +291,39 @@ impl NetworkBehaviour for Workswap {
         for id in message.rejects {
             log::info!("Peer {:?} rejected execution {:?}", &peer_id, id);
             stats.running_there.remove(&id);
-            self.events.push_back(NetworkBehaviourAction::GenerateEvent(
-                WorkswapEvent::Rejected(peer_id.clone(), id),
-            ));
+            self.events
+                .push_back(NetworkBehaviourAction::GenerateEvent(WorkswapEvent::Rejected(peer_id.clone(), id)));
         }
 
         for req in message.requests {
             log::info!("Peer {:?} requested execution of {:#?}", &peer_id, req);
             stats.running_here.insert(req.id.clone());
             let ev = WorkswapEvent::WantCalc(peer_id.clone(), req.id, req.method, req.args);
-            self.events
-                .push_back(NetworkBehaviourAction::GenerateEvent(ev));
+            self.events.push_back(NetworkBehaviourAction::GenerateEvent(ev));
         }
 
         for res in message.results {
             log::info!("Peer {:?} finished execution {:?}", peer_id, res);
             stats.running_there.remove(&res.id);
             let ev = WorkswapEvent::Completed(peer_id.clone(), res.id, res.hash);
-            self.events
-                .push_back(NetworkBehaviourAction::GenerateEvent(ev));
+            self.events.push_back(NetworkBehaviourAction::GenerateEvent(ev));
         }
 
         let reported = message.running.into_iter().collect();
         let diff = stats.running_there.difference(&reported);
 
         for id in diff {
-            log::info!(
-                "Peer {:?} expected to run {:?} but not reported",
-                peer_id,
-                id
-            );
+            log::info!("Peer {:?} expected to run {:?} but not reported", peer_id, id);
         }
     }
 
-    fn poll(
-        &mut self,
-        ctx: &mut Context,
-        _: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<Message, Self::OutEvent>> {
+    fn poll(&mut self, ctx: &mut Context, _: &mut impl PollParameters) -> Poll<NetworkBehaviourAction<Message, Self::OutEvent>> {
         while let Poll::Ready(Some((peer, exec))) = self.finished_local_execs.poll_next_unpin(ctx) {
             log::info!("send exec res: {:?} {:?}", peer, exec);
             self.resolve_execution(&peer, exec);
         }
 
         if let Some(event) = self.events.pop_front() {
-            log::info!("Event pop: {:?}", event);
             return Poll::Ready(event);
         }
 

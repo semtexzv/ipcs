@@ -4,15 +4,21 @@ pub mod cli;
 
 #[tokio::main]
 async fn main() {
-    std::env::set_var("RUST_LOG", "ipcs_node=trace,info");
+    std::env::set_var("RUST_LOG", "ipcs_node=debug,info");
     env_logger::init();
 
     let matches = cli::app().get_matches();
 
     if let Some(matches) = matches.subcommand_matches("node") {
+
         let config = NodeConfig {
             no_api: matches.is_present("no-api"),
+            ipfs_url: matches
+                .value_of("ipfs-url")
+                .map(ToString::to_string)
+                .unwrap_or_else(|| NodeConfig::default().ipfs_url),
         };
+
         return ipcs_node::run(config).await;
     }
 

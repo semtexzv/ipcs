@@ -50,7 +50,8 @@ struct IoData<'a> {
 }
 
 /// Execute wasm module (which is expected to conform to ipcs platform
-/// along with a list of arguments (arguments provided here are raw buffers)
+/// along with a list of arguments (arguments provided here are raw buffers). At this layer we don't care about IPFS
+/// TODO: Introduce file-like abstraction to support streaming processing of data.
 pub fn exec(wasm: &[u8], args: &[&[u8]]) -> Result<Vec<u8>> {
     let imports = imports! {
         "_ipcs" => {

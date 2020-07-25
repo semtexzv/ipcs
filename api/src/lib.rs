@@ -10,6 +10,7 @@ impl IpcsApi {
             client: reqwest::Client::new(),
         })
     }
+
     pub async fn exec(&self, method: &str, args: &[&str]) -> Result<String, reqwest::Error> {
         let mut url = self.url.clone();
         url.set_path("/api/v0/exec");
