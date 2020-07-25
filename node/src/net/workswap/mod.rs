@@ -1,29 +1,25 @@
-use std::collections::{HashMap, VecDeque, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
 use std::pin::Pin;
 
-use futures::{Future, FutureExt, StreamExt, SinkExt, AsyncRead, AsyncWrite};
+use futures::channel::{
+    mpsc::{unbounded, UnboundedReceiver, UnboundedSender},
+    oneshot::Sender as OneSender,
+};
 use futures::task::{Context, Poll};
+use futures::{AsyncRead, AsyncWrite, Future, FutureExt, StreamExt};
 use libp2p::{
     core::{
-        upgrade,
-        connection::ConnectionId, InboundUpgrade, Multiaddr,
-        OutboundUpgrade, PeerId, UpgradeInfo,
+        connection::ConnectionId, upgrade, InboundUpgrade, Multiaddr, OutboundUpgrade, PeerId,
+        UpgradeInfo,
     },
     swarm::{
-        DialPeerCondition,
-        NetworkBehaviour, NetworkBehaviourAction, NotifyHandler,
-        PollParameters, protocols_handler::{IntoProtocolsHandler, OneShotHandler, ProtocolsHandler},
+        DialPeerCondition, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters,
     },
 };
-use futures::channel::{
-    oneshot::{Sender as OneSender, Receiver as OneReceiver},
-    mpsc::{UnboundedSender, UnboundedReceiver, unbounded},
-};
-use std::io::Write;
 use multihash::MultihashDigest;
 
-type FutureResult<T, E> = Pin<Box<dyn Future<Output=Result<T, E>> + Send>>;
+type FutureResult<T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send>>;
 
 type Error = Box<dyn std::error::Error + Send + 'static>;
 
@@ -44,7 +40,6 @@ impl Into<Vec<u8>> for &Message {
         serde_json::to_vec(self).unwrap()
     }
 }
-
 
 impl TryFrom<&[u8]> for Message {
     type Error = Error;
@@ -88,7 +83,8 @@ impl UpgradeInfo for Message {
 }
 
 impl<TS> InboundUpgrade<TS> for WorkswapConfig
-    where TS: AsyncRead + AsyncWrite + Send + Unpin + 'static
+where
+    TS: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Output = Message;
     type Error = Error;
@@ -100,12 +96,14 @@ impl<TS> InboundUpgrade<TS> for WorkswapConfig
             let packet = upgrade::read_one(&mut socket, 1024 * 1024).await.unwrap();
             let message = Message::try_from(packet.as_ref())?;
             Ok(message)
-        }.boxed()
+        }
+        .boxed()
     }
 }
 
 impl<TS> OutboundUpgrade<TS> for Message
-    where TS: AsyncRead + AsyncWrite + Send + Unpin + 'static
+where
+    TS: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Output = ();
     type Error = std::io::Error;
@@ -116,7 +114,8 @@ impl<TS> OutboundUpgrade<TS> for Message
             let bytes: Vec<u8> = (&self).into();
             upgrade::write_one(&mut socket, bytes).await?;
             Ok(())
-        }.boxed()
+        }
+        .boxed()
     }
 }
 
@@ -181,7 +180,6 @@ impl Workswap {
         }
     }
 
-
     pub fn connect(&mut self, peer_id: PeerId) {
         if !self.peers.contains_key(&peer_id) {
             let ev = NetworkBehaviourAction::DialPeer {
@@ -198,30 +196,38 @@ impl Workswap {
     }
 
     pub fn reject(&mut self, peer_id: &PeerId, id: ExecutionID) {
-        self.peers.get_mut(peer_id).expect("Peer not found").reject(id);
+        self.peers
+            .get_mut(peer_id)
+            .expect("Peer not found")
+            .reject(id);
     }
 
     pub fn accept(&mut self, peer_id: &PeerId, id: ExecutionID) {
-        self.peers.get_mut(peer_id).expect("Peer not found").accept(id);
+        self.peers
+            .get_mut(peer_id)
+            .expect("Peer not found")
+            .accept(id);
     }
 
     /// We want to execute a function, and pick first usable peer.
-    pub fn want_exec(&mut self, method: Cid, args: Vec<Cid>,
-                     ret: OneSender<Result<String, String>>) {
+    pub fn want_exec(
+        &mut self,
+        method: Cid,
+        args: Vec<Cid>,
+        ret: OneSender<Result<String, String>>,
+    ) {
         let mut id = multihash::Sha2_256::default();
         id.input(method.as_bytes());
         for i in &args {
             id.input(i.as_bytes());
         }
-        let id = id.digest(&[]).to_vec();
+        let id = bs58::encode(&id.digest(&[])).into_string();
 
         // TODO: Some proper search structure here
         // Some randomness factor. find by hamming distance between work hash and node id
-        let mut peers = self.peers.iter_mut()
-            .collect::<Vec<_>>();
+        let mut peers = self.peers.iter_mut().collect::<Vec<_>>();
 
         peers.sort_by_key(|(f, _)| hamming::distance(f.as_ref(), id.as_ref()));
-
 
         if peers.len() == 0 {
             return ret.send(Err("No peers".to_string())).unwrap();
@@ -242,14 +248,12 @@ impl Workswap {
 
     pub fn handle_control_mesage(&mut self, msg: crate::IPCSCommand) {
         match msg {
-            crate::IPCSCommand::Exec(method, args, ret) => {
-                self.want_exec(method, args, ret)
-            }
+            crate::IPCSCommand::Exec(method, args, ret) => self.want_exec(method, args, ret),
         }
     }
 }
 
-type ExecutionID = Vec<u8>;
+type ExecutionID = String;
 type Cid = String;
 
 #[derive(Debug)]
@@ -302,36 +306,44 @@ impl NetworkBehaviour for Workswap {
         for id in message.rejects {
             log::info!("Peer {:?} rejected execution {:?}", &peer_id, id);
             stats.running_there.remove(&id);
-            self.events.push_back(
-                NetworkBehaviourAction::GenerateEvent(WorkswapEvent::Rejected(peer_id.clone(), id))
-            );
+            self.events.push_back(NetworkBehaviourAction::GenerateEvent(
+                WorkswapEvent::Rejected(peer_id.clone(), id),
+            ));
         }
 
         for req in message.requests {
             log::info!("Peer {:?} requested execution of {:#?}", &peer_id, req);
             stats.running_here.insert(req.id.clone());
             let ev = WorkswapEvent::WantCalc(peer_id.clone(), req.id, req.method, req.args);
-            self.events.push_back(NetworkBehaviourAction::GenerateEvent(ev));
+            self.events
+                .push_back(NetworkBehaviourAction::GenerateEvent(ev));
         }
 
         for res in message.results {
             log::info!("Peer {:?} finished execution {:?}", peer_id, res);
             stats.running_there.remove(&res.id);
             let ev = WorkswapEvent::Completed(peer_id.clone(), res.id, res.hash);
-            self.events.push_back(NetworkBehaviourAction::GenerateEvent(ev));
+            self.events
+                .push_back(NetworkBehaviourAction::GenerateEvent(ev));
         }
 
         let reported = message.running.into_iter().collect();
         let diff = stats.running_there.difference(&reported);
 
         for id in diff {
-            log::info!("Peer {:?} expected to run {:?} but not reported", peer_id, id);
+            log::info!(
+                "Peer {:?} expected to run {:?} but not reported",
+                peer_id,
+                id
+            );
         }
     }
 
-    fn poll(&mut self, ctx: &mut Context, _: &mut impl PollParameters)
-            -> Poll<NetworkBehaviourAction<Message, Self::OutEvent>>
-    {
+    fn poll(
+        &mut self,
+        ctx: &mut Context,
+        _: &mut impl PollParameters,
+    ) -> Poll<NetworkBehaviourAction<Message, Self::OutEvent>> {
         while let Poll::Ready(Some((peer, exec))) = self.finished_local_execs.poll_next_unpin(ctx) {
             log::info!("send exec res: {:?} {:?}", peer, exec);
             self.resolve_execution(&peer, exec);

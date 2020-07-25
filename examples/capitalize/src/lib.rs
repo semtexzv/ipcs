@@ -7,4 +7,3 @@ pub fn exec_bytes() {
     v.make_ascii_uppercase();
     ipcs::ret(&v.as_bytes());
 }
-

@@ -11,7 +11,7 @@ async fn main() {
 
     if let Some(matches) = matches.subcommand_matches("node") {
         let config = NodeConfig {
-            no_api: matches.is_present("no-api")
+            no_api: matches.is_present("no-api"),
         };
         return ipcs_node::run(config).await;
     }

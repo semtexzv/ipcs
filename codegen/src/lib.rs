@@ -1,10 +1,9 @@
 extern crate proc_macro;
 
-use proc_macro::{TokenStream};
+use proc_macro::TokenStream;
 
-use syn::parse_macro_input;
 use quote::quote;
-
+use syn::parse_macro_input;
 
 #[proc_macro_attribute]
 pub fn entrypoint(_attr: TokenStream, item: TokenStream) -> TokenStream {

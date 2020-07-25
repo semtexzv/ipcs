@@ -1,18 +1,14 @@
 #![deny(unused_must_use)]
+use futures::future::{join, join_all};
 use ipfsapi::IpfsApi;
-use futures::future::{join_all, join};
 
-use futures::channel::{
-    oneshot::{Sender, Receiver, channel},
-    mpsc::{UnboundedSender, UnboundedReceiver, unbounded},
-};
+use futures::channel::{mpsc::unbounded, oneshot::Sender};
 
 use executor::Result;
 use std::sync::Arc;
 
-pub mod net;
 pub mod api;
-
+pub mod net;
 
 #[derive(Debug)]
 pub enum IPCSCommand {
@@ -23,9 +19,7 @@ pub enum IPCSCommand {
 /// by [arg] hashes
 pub async fn exec(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> {
     let method = api.cat(method);
-    let args = args.iter().map(|hash| {
-        api.cat(hash)
-    }).collect::<Vec<_>>();
+    let args = args.iter().map(|hash| api.cat(hash)).collect::<Vec<_>>();
 
     let (wasm, args) = join(method, join_all(args)).await;
 
@@ -35,7 +29,9 @@ pub async fn exec(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> 
         let args = args.iter().map(|v| v.as_ref()).collect::<Vec<_>>();
 
         executor::exec(wasm.unwrap().as_ref(), &args).unwrap()
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     let hash = api.add(bytes::Bytes::from(res)).await?;
     return Ok(hash);
@@ -43,7 +39,7 @@ pub async fn exec(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> 
 
 #[derive(Default)]
 pub struct NodeConfig {
-    pub no_api: bool
+    pub no_api: bool,
 }
 
 pub async fn run(config: NodeConfig) {

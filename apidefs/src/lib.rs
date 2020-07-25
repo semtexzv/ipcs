@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecReq {
@@ -8,5 +8,5 @@ pub struct ExecReq {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecResp {
-    pub hash: String
+    pub hash: String,
 }

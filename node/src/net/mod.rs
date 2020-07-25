@@ -1,20 +1,21 @@
-use libp2p::{
-    Multiaddr, PeerId, NetworkBehaviour, identity, gossipsub::{Topic},
-    mdns::{Mdns, MdnsEvent},
-    ping::{Ping, PingConfig, PingEvent, PingSuccess},
-    identify::{Identify, IdentifyEvent, IdentifyInfo},
-    request_response::{codec, RequestResponse, RequestResponseEvent},
-    swarm::{SwarmBuilder, NetworkBehaviourEventProcess, NetworkBehaviour},
-    Swarm,
-};
-use crate::net::workswap::{WorkswapEvent, ExecutionResult};
-use ipfsapi::IpfsApi;
 use std::sync::Arc;
-use futures::{stream::{Stream, StreamExt}, channel::mpsc::UnboundedReceiver, Future};
-use futures::SinkExt;
-use futures::future::Either;
 use std::task::Poll;
+
+use futures::SinkExt;
+use futures::{channel::mpsc::UnboundedReceiver, Future};
+use libp2p::{
+    identify::{Identify, IdentifyEvent},
+    identity,
+    mdns::{Mdns, MdnsEvent},
+    ping::{Ping, PingConfig, PingEvent},
+    swarm::{NetworkBehaviourEventProcess, SwarmBuilder},
+    Multiaddr, NetworkBehaviour, PeerId, Swarm,
+};
 use tokio::macros::support::Pin;
+
+use ipfsapi::IpfsApi;
+
+use crate::net::workswap::{ExecutionResult, WorkswapEvent};
 
 mod workswap;
 
@@ -30,7 +31,7 @@ pub struct Behaviour {
 }
 
 impl NetworkBehaviourEventProcess<()> for Behaviour {
-    fn inject_event(&mut self, event: ()) {}
+    fn inject_event(&mut self, _: ()) {}
 }
 
 impl NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour {
@@ -44,29 +45,36 @@ impl NetworkBehaviourEventProcess<workswap::WorkswapEvent> for Behaviour {
         log::info!("workswap event: {:?}", event);
         match event {
             WorkswapEvent::Completed(peer, id, res) => {
+                log::debug!("Peer {} finished work on {} res: {}", peer, id, res);
                 if let Some(ret) = self.workswap.return_channels.remove(&id) {
-                    tokio::spawn(async move { ret.send(Ok(res)).unwrap(); });
+                    tokio::spawn(async move {
+                        ret.send(Ok(res)).unwrap();
+                    });
                 }
             }
-            WorkswapEvent::WantCalc(peer, id, method, arg) => {
+            WorkswapEvent::WantCalc(peer, id, method, args) => {
+                log::debug!(
+                    "peer {} wants us to work on {} ({}) applied on {:?}",
+                    peer,
+                    id,
+                    method,
+                    args
+                );
                 self.workswap.accept(&peer, id.clone());
                 let ipfs = self.ipfs.clone();
                 let mut fin = self.workswap.queued_local_execs.clone();
                 tokio::spawn(async move {
-                    let args = arg.iter().map(AsRef::as_ref).collect::<Vec<_>>();
+                    let args = args.iter().map(AsRef::as_ref).collect::<Vec<_>>();
                     let res = crate::exec(&ipfs, &method, &args).await.unwrap();
-                    let res = ExecutionResult {
-                        id,
-                        hash: res,
-                    };
+                    let res = ExecutionResult { id, hash: res };
                     fin.send((peer, res)).await.unwrap();
                 });
             }
             WorkswapEvent::Accepted(peer, id) => {
-                panic!("Accepted")
+                log::debug!("Peer {} accepted to work on {}", peer, id);
             }
             WorkswapEvent::Rejected(peer, id) => {
-                panic!("Rejected")
+                log::debug!("Peer {} rejected to work on {}", peer, id);
             }
         }
     }
@@ -149,8 +157,7 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
     log::info!("Local peer id: {:?}", local_peer_id);
 
     // Set up a an encrypted DNS-enabled TCP Transport over the Mplex and Yamux protocols
-    let transport = libp2p::build_development_transport(local_key
-        .clone()).unwrap();
+    let transport = libp2p::build_development_transport(local_key.clone()).unwrap();
 
     let mut swarm = {
         let behavior = Behaviour {
@@ -160,12 +167,13 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
             identify: Identify::new(
                 "/ipcs/0.0.0".into(),
                 "rust-ipcs".into(),
-                local_key.clone().public()),
+                local_key.clone().public(),
+            ),
             workswap: workswap::Workswap::new(),
         };
         struct Exec;
         impl libp2p::core::Executor for Exec {
-            fn exec(&self, future: Pin<Box<dyn Future<Output=()> + Send>>) {
+            fn exec(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) {
                 tokio::spawn(future);
             }
         }
@@ -178,14 +186,12 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
     use futures::StreamExt;
 
     loop {
-        futures::future::poll_fn(|ctx| -> Poll<Option<()>>{
+        futures::future::poll_fn(|ctx| -> Poll<Option<()>> {
             match swarm.poll_next_unpin(ctx) {
                 Poll::Ready(Some(item)) => {
                     log::info!("Event: {:?}", item);
                 }
-                Poll::Ready(None) => {
-                    panic!("Swarm closed")
-                }
+                Poll::Ready(None) => panic!("Swarm closed"),
                 Poll::Pending => {}
             }
             match control.poll_next_unpin(ctx) {
@@ -200,6 +206,7 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
             }
 
             Poll::Pending
-        }).await;
+        })
+        .await;
     }
 }

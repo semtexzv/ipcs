@@ -2,7 +2,6 @@ use wasmer::*;
 
 pub type Result<T, E = Box<dyn std::error::Error>> = std::result::Result<T, E>;
 
-
 fn _ipcs_arg_count(ctx: &mut Ctx) -> u32 {
     println!("_ipcs_arg_count");
     let data = ctx.data.cast::<IoData>();
@@ -23,7 +22,8 @@ fn _ipcs_arg_read(ctx: &mut Ctx, idx: u32, ptr: u32, offset: u32, len: u32) -> u
     let mem = ctx.memory(0);
     let view = mem.view::<u8>();
 
-    let iter = arg[offset as usize..(offset + len) as usize].iter()
+    let iter = arg[offset as usize..(offset + len) as usize]
+        .iter()
         .zip(view[ptr as usize..(ptr + len) as usize].iter());
 
     let mut count = 0;
@@ -35,11 +35,12 @@ fn _ipcs_arg_read(ctx: &mut Ctx, idx: u32, ptr: u32, offset: u32, len: u32) -> u
 }
 
 fn _ipcs_ret(ctx: &mut Ctx, ptr: u32, len: u32) {
-
     let data = ctx.data.cast::<IoData>();
     let mem = ctx.memory(0).view::<u8>();
-    for v in &mem[ptr as usize .. (ptr + len) as usize] {
-        unsafe { (&mut *data).ret.push(v.get()); }
+    for v in &mem[ptr as usize..(ptr + len) as usize] {
+        unsafe {
+            (&mut *data).ret.push(v.get());
+        }
     }
 }
 
@@ -60,13 +61,9 @@ pub fn exec(wasm: &[u8], args: &[&[u8]]) -> Result<Vec<u8>> {
         },
     };
 
-
     let mut instance = instantiate(wasm, &imports)?;
 
-    let mut io_data = IoData {
-        ret: vec![],
-        args,
-    };
+    let mut io_data = IoData { ret: vec![], args };
 
     instance.context_mut().data = &mut io_data as *mut _ as *mut _;
 

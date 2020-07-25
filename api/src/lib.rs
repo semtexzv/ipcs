@@ -14,13 +14,17 @@ impl IpcsApi {
         let mut url = self.url.clone();
         url.set_path("/api/v0/exec");
 
-        let res: apidefs::ExecResp = self.client.post(url)
+        let res: apidefs::ExecResp = self
+            .client
+            .post(url)
             .json(&apidefs::ExecReq {
                 method: method.to_string(),
                 args: args.iter().map(|v| v.to_string()).collect(),
             })
-            .send().await?
-            .json().await?;
+            .send()
+            .await?
+            .json()
+            .await?;
 
         Ok(res.hash)
     }

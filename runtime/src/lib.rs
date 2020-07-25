@@ -25,5 +25,7 @@ pub fn arg_buf(i: u32) -> Box<[u8]> {
 }
 
 pub fn ret(data: &[u8]) {
-    unsafe { _ipcs_ret(data.as_ptr() as u32, data.len() as u32); }
+    unsafe {
+        _ipcs_ret(data.as_ptr() as u32, data.len() as u32);
+    }
 }
