@@ -1,17 +1,18 @@
 [package]
 name = "ipcs-api"
 version = "0.0.0"
-authors = ["Michal Hornicky <mhornick@redhat.com>"]
+authors = ["Michal Hornicky <semtexzv@gmail.com>"]
+repository = "https://github.com/semtexzv/ipcs"
+description = "Client for IPCS HTTP API"
+license = "MIT"
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies.apidefs]
 package = "ipcs-apidefs"
-path = "../apidefs"
+version = "0.0.0"
 
 [dependencies]
-reqwest = "0.10.7"
+reqwest = {version = "0.10.7", features = ["json"] }
 url = "2.1.1"
 serde = "1.0.114"
 serde_json = "1.0.56"

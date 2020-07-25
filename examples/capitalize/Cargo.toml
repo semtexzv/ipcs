@@ -1,5 +1,5 @@
 [package]
-name = "samplefun"
+name = "capitalize"
 version = "0.1.0"
 authors = ["Michal Hornicky <mhornick@redhat.com>"]
 edition = "2018"
@@ -11,10 +11,6 @@ crate-type = ["cdylib"]
 
 [dependencies.ipcs]
 package = "ipcs-runtime"
-path = "../runtime"
-
-[dependencies.codegen]
-package = "ipcs-codegen"
-path = "../codegen"
+version = "0.0.0"
 
 [dependencies]

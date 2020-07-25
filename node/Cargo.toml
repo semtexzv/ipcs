@@ -1,7 +1,10 @@
 [package]
 name = "ipcs-node"
 version = "0.0.0"
-authors = ["Michal Hornicky <mhornick@redhat.com>"]
+authors = ["Michal Hornicky <semtexzv@gmail.com>"]
+repository = "https://github.com/semtexzv/ipcs"
+description = "IPCS worker node - provides HTTP API & uses libp2p for communication"
+license = "MIT"
 edition = "2018"
 
 [dependencies.ipfsapi]
@@ -10,15 +13,15 @@ version = "0.4.0"
 
 [dependencies.executor]
 package = "ipcs-executor"
-path = "../executor"
+version = "0.0.0"
 
 [dependencies.apidefs]
 package = "ipcs-apidefs"
-path = "../apidefs"
+version = "0.0.0"
 
 [dependencies.libp2p]
 default-features = false
-version = "0.22.0"
+version = "=0.22.0"
 features = [
 "deflate",
 "dns",
@@ -36,7 +39,7 @@ features = [
 "secio",
 "secp256k1",
 "tcp-tokio",
-"uds",
+#"tcp-async-std",
 "wasm-ext",
 "websocket",
 "yamux",
@@ -44,10 +47,12 @@ features = [
 
 [dependencies]
 warp = "0.2"
-serde = { version = "*", features = ["derive"]}
-tokio = { version = "0.2", features = ["rt-core", "macros"] }
-futures = "*"
-bytes = "*"
-libc = "*"
-anyhow = "*"
-log = "*"
+serde = { version = "1", features = ["derive"]}
+serde_json = "*"
+tokio = { version = "0.2", default-features = false, features = ["rt-threaded", "blocking", "macros"] }
+futures = "0.3.5"
+bytes = "0.5.6"
+libc = "0.2.73"
+log = "0.4.11"
+multihash = "0.11.2"
+hamming = "0.1.3"

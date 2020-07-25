@@ -5,6 +5,10 @@ fn node_cmd() -> clap::App<'static, 'static> {
     SubCommand::with_name("node")
         .about("Runs the IPCS node")
         .version("0.0.0")
+        .arg(Arg::with_name("no-api")
+            .long("no-api")
+            .short("n")
+            .help("Disable built-in HTTP API"))
 }
 
 fn exec_cmd() -> clap::App<'static, 'static> {
@@ -17,7 +21,7 @@ fn exec_cmd() -> clap::App<'static, 'static> {
         )
         .arg(Arg::with_name("args")
             .help("Arguments to the method (hashes of IPFS objects)")
-            .required(true)
+            .required(false)
             .multiple(true)
             .index(2)
         )
@@ -30,4 +34,5 @@ pub fn app() -> clap::App<'static, 'static> {
         .about("Inter-planetary computation system")
         .subcommand(node_cmd())
         .subcommand(exec_cmd())
+        .setting(clap::AppSettings::SubcommandRequiredElseHelp)
 }

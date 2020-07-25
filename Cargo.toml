@@ -1,5 +1,18 @@
 [workspace]
-members = ["api", "apidefs", "cli", "codegen", "node", "runtime", "samplefun"]
+members = [
+"api", "apidefs",
+"cli", "codegen", "executor", "node", "runtime",
+"examples/capitalize"
+]
+
+default-members = ["cli"]
 
 [patch.crates-io]
 semtexzv-ipfsapi = { path = "./ipfsapi" }
+
+ipcs-apidefs = { path = "./apidefs" }
+ipcs-api = { path = "./api" }
+ipcs-codegen = { path = "./codegen" }
+ipcs-executor = { path = "./executor" }
+ipcs-node = { path = "./node" }
+ipcs-runtime = { path = "./runtime" }

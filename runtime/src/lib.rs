@@ -19,6 +19,7 @@ pub fn arg_buf(i: u32) -> Box<[u8]> {
         let mut vec: Vec<u8> = Vec::with_capacity(len as usize);
         vec.resize(len as usize, 0);
         let read = _ipcs_arg_read(i, vec.as_ptr() as _, 0, len);
+        assert!(read <= len, "Read invalid length");
         vec.into_boxed_slice()
     }
 }

@@ -1,4 +1,4 @@
-use ipcs::*;
+use ipcs;
 
 #[ipcs::entrypoint]
 pub fn exec_bytes() {

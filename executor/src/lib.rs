@@ -34,7 +34,6 @@ fn _ipcs_arg_read(ctx: &mut Ctx, idx: u32, ptr: u32, offset: u32, len: u32) -> u
     count
 }
 
-
 fn _ipcs_ret(ctx: &mut Ctx, ptr: u32, len: u32) {
 
     let data = ctx.data.cast::<IoData>();
@@ -49,7 +48,8 @@ struct IoData<'a> {
     args: &'a [&'a [u8]],
 }
 
-// Execute wasm
+/// Execute wasm module (which is expected to conform to ipcs platform
+/// along with a list of arguments (arguments provided here are raw buffers)
 pub fn exec(wasm: &[u8], args: &[&[u8]]) -> Result<Vec<u8>> {
     let imports = imports! {
         "_ipcs" => {
@@ -74,10 +74,6 @@ pub fn exec(wasm: &[u8], args: &[&[u8]]) -> Result<Vec<u8>> {
 
     let main = instance.dyn_func(&entrypoint)?;
     assert_eq!(main.signature().params().len(), 0);
-
-    println!("Executing: {:?}", io_data.args);
     instance.call(&entrypoint, &[])?;
-    println!("Res: {:?}", io_data.ret);
-
     return Ok(io_data.ret);
 }

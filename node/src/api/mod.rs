@@ -1,9 +1,10 @@
 use warp::{Filter, path};
-use serde::{Deserialize};
 use ipfsapi::IpfsApi;
 use std::sync::Arc;
 
 use apidefs::{ExecReq, ExecResp};
+use futures::channel::mpsc::UnboundedSender;
+use futures::SinkExt;
 
 #[derive(Debug)]
 pub struct Error(warp::http::StatusCode, String);
@@ -17,14 +18,16 @@ pub async fn convert_err(reject: warp::reject::Rejection) -> Result<warp::reply:
     return Err(reject);
 }
 
-pub async fn run(api: Arc<IpfsApi>) {
-    let with_ipfs = warp::any().map(move || api.clone());
-    let root = warp::path("api")
+type State = (Arc<IpfsApi>, UnboundedSender<crate::IPCSCommand>);
+
+pub async fn run(api: Arc<IpfsApi>, control: UnboundedSender<crate::IPCSCommand>) {
+    let with_ipfs = warp::any().map(move || (api.clone(), control.clone()));
+    let root = path("api")
         .and(with_ipfs);
 
-    let v0 = root.and(warp::path("v0"));
+    let v0 = root.and(path("v0"));
 
-    let exec = v0.and(warp::path("exec"))
+    let exec = v0.and(path("exec"))
         .and(warp::post())
         .and(warp::body::json::<ExecReq>())
         .and_then(exec)
@@ -35,9 +38,10 @@ pub async fn run(api: Arc<IpfsApi>) {
 }
 
 
-pub async fn exec(ipfs: Arc<IpfsApi>, body: ExecReq) -> Result<impl warp::Reply, warp::reject::Rejection> {
-    let args = body.args.iter().map(|v| v.as_ref()).collect::<Vec<_>>();
-    let res = crate::apply(ipfs.as_ref(), &body.method, &args).await;
+pub async fn exec((_, mut control): State, body: ExecReq) -> Result<impl warp::Reply, warp::reject::Rejection> {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    control.send(crate::IPCSCommand::Exec(body.method, body.args, tx)).await.unwrap();
+    let res = rx.await.unwrap();
     match res {
         Ok(r) => {
             Ok(warp::reply::json(&ExecResp {

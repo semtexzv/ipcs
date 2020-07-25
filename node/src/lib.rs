@@ -1,5 +1,11 @@
+#![deny(unused_must_use)]
 use ipfsapi::IpfsApi;
 use futures::future::{join_all, join};
+
+use futures::channel::{
+    oneshot::{Sender, Receiver, channel},
+    mpsc::{UnboundedSender, UnboundedReceiver, unbounded},
+};
 
 use executor::Result;
 use std::sync::Arc;
@@ -7,37 +13,48 @@ use std::sync::Arc;
 pub mod net;
 pub mod api;
 
-pub async fn apply(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> {
+
+#[derive(Debug)]
+pub enum IPCSCommand {
+    Exec(String, Vec<String>, Sender<Result<String, String>>),
+}
+
+/// Executes function identified by [arg] has against arguments identified
+/// by [arg] hashes
+pub async fn exec(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> {
     let method = api.cat(method);
     let args = args.iter().map(|hash| {
         api.cat(hash)
     }).collect::<Vec<_>>();
 
     let (wasm, args) = join(method, join_all(args)).await;
-    let args = args.into_iter().collect::<Result<Vec<_>, _>>()?;
-    let args = args.iter().map(|v| v.as_ref()).collect::<Vec<_>>();
-    let res = executor::exec(wasm?.as_ref(), &args)?;
+
+    let res = tokio::task::spawn_blocking(move || {
+        // TODO: Do not pre-download whole args, use file-like API for streaming
+        let args = args.into_iter().collect::<Result<Vec<_>, _>>().unwrap();
+        let args = args.iter().map(|v| v.as_ref()).collect::<Vec<_>>();
+
+        executor::exec(wasm.unwrap().as_ref(), &args).unwrap()
+    }).await.unwrap();
 
     let hash = api.add(bytes::Bytes::from(res)).await?;
     return Ok(hash);
 }
 
+#[derive(Default)]
+pub struct NodeConfig {
+    pub no_api: bool
+}
 
-pub async fn run() {
+pub async fn run(config: NodeConfig) {
     let api = IpfsApi::new("localhost", 5001);
     let api = Arc::new(api);
-    tokio::spawn(api::run(api));
-    tokio::spawn(net::run()).await.unwrap()
 
-    /*
-    let api = IpfsApi::new("localhost", 5001);
+    let (tx, rx) = unbounded();
 
-    let res = apply(
-        &api,
-        "QmTNrx5m787uBudCyA9eE8iyQFrMPdC1F8VzXB2DTQem38",
-        &["QmQbkRGwgdZs31nhrmubSDmyvAyxaBwRSpJ66qwAnzjEpP"]).await.unwrap();
+    if !config.no_api {
+        tokio::spawn(api::run(api.clone(), tx));
+    }
 
-    panic!("{:?} - ", res);
-
-     */
+    tokio::spawn(net::run(api.clone(), rx)).await.unwrap()
 }
