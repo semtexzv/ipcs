@@ -4,7 +4,7 @@ pub mod cli;
 
 #[tokio::main]
 async fn main() {
-    std::env::set_var("RUST_LOG", "ipcs_node=debug,info");
+    std::env::set_var("RUST_LOG", "ipcs_node=debug,libp2p_swarm=trace,info");
     env_logger::init();
 
     let matches = cli::app().get_matches();

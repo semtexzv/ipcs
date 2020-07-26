@@ -1,4 +1,5 @@
 #![deny(unused_must_use)]
+#![allow(unused_imports)]
 
 use futures::future::{join, join_all};
 use ipfsapi::IpfsApi;
