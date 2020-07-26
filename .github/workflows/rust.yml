@@ -1,9 +1,9 @@
-name: Publish
+name: Build
 
 on:
   push:
-    tags: 
-      - '*'
+    branches: 
+      - master
 
 env:
   CARGO_TERM_COLOR: always
