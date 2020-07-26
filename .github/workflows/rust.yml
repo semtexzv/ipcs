@@ -1,0 +1,26 @@
+name: Publish
+
+on:
+  push:
+    tags: 
+      - '*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        
+      - name: build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build --all
+        
