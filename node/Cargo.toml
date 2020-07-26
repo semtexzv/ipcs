@@ -9,7 +9,7 @@ edition = "2018"
 
 [dependencies.ipfsapi]
 package = "semtexzv-ipfsapi"
-version = "0.4.1-alpha.1"
+version = "=0.4.1-alpha.2"
 
 [dependencies.executor]
 package = "ipcs-executor"
