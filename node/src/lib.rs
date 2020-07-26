@@ -31,8 +31,7 @@ pub async fn exec(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> 
 
         executor::exec(wasm.unwrap().as_ref(), &args).unwrap()
     })
-    .await
-    .unwrap();
+    .await?;
 
     let hash = api.add(bytes::Bytes::from(res)).await?;
     return Ok(hash);

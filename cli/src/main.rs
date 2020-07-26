@@ -24,7 +24,10 @@ async fn main() {
 
     if let Some(matches) = matches.subcommand_matches("exec") {
         let method = matches.value_of("method").unwrap();
-        let args = matches.values_of("args").unwrap().collect::<Vec<&str>>();
+
+        let args = matches.values_of("args")
+            .map(|v|v.collect::<Vec<&str>>()).unwrap_or(vec![]);
+
         let api = ipcs_api::IpcsApi::new("http://127.0.0.1:3030").unwrap();
         let res = api.exec(method, &args).await.unwrap();
         println!("{}", res);

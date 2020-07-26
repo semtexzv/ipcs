@@ -25,6 +25,20 @@ fn exec_cmd() -> clap::App<'static, 'static> {
         )
 }
 
+
+pub fn fun_cmd() -> clap::App<'static, 'static> {
+    SubCommand::with_name("fun")
+        .about("Work with functions")
+        .subcommand(
+            SubCommand::with_name("new"),
+        )
+        .subcommand(
+            SubCommand::with_name("build")
+        )
+        .subcommand(
+            SubCommand::with_name("deploy")
+        )
+}
 pub fn app() -> clap::App<'static, 'static> {
     App::new("IPCS cli interface")
         .version("0.0.0")
@@ -32,5 +46,6 @@ pub fn app() -> clap::App<'static, 'static> {
         .about("Inter-planetary computation system")
         .subcommand(node_cmd())
         .subcommand(exec_cmd())
+        //.subcommand(fun_cmd())
         .setting(clap::AppSettings::SubcommandRequiredElseHelp)
 }

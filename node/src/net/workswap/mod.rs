@@ -10,11 +10,12 @@ use futures::task::{Context, Poll};
 use futures::{AsyncRead, AsyncWrite, Future, FutureExt, StreamExt};
 use libp2p::{
     core::{connection::ConnectionId, upgrade, InboundUpgrade, Multiaddr, OutboundUpgrade, PeerId, UpgradeInfo},
-    swarm::{DialPeerCondition, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters},
+    swarm::{NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters},
 };
 use multihash::MultihashDigest;
+use std::cmp;
 
-type FutureResult<T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send>>;
+type FutureResult<T, E> = Pin<Box<dyn Future<Output=Result<T, E>> + Send>>;
 
 type Error = Box<dyn std::error::Error + Send + 'static>;
 
@@ -78,8 +79,8 @@ impl UpgradeInfo for Message {
 }
 
 impl<TS> InboundUpgrade<TS> for WorkswapConfig
-where
-    TS: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    where
+        TS: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Output = Message;
     type Error = Error;
@@ -92,13 +93,13 @@ where
             let message = Message::try_from(packet.as_ref())?;
             Ok(message)
         }
-        .boxed()
+            .boxed()
     }
 }
 
 impl<TS> OutboundUpgrade<TS> for Message
-where
-    TS: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    where
+        TS: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Output = ();
     type Error = std::io::Error;
@@ -110,7 +111,7 @@ where
             upgrade::write_one(&mut socket, bytes).await?;
             Ok(())
         }
-        .boxed()
+            .boxed()
     }
 }
 
@@ -150,12 +151,51 @@ impl PeerStats {
     }
 }
 
+pub type WorkResult = Result<Cid, String>;
+
+/// Struct containing metdata about work that this node has dispatched to the network
+pub struct WorkUnit {
+    /// When was this work unit started ?
+    pub started: std::time::Instant,
+    /// Return channel for returning the result to local caller
+    pub ret_chan: OneSender<WorkResult>,
+
+    /// Set of peers to which we have sent the work
+    pub contacted_peers: HashSet<PeerId>,
+    /// Set of peers which have rejected the work
+    pub rejected_peers: HashSet<PeerId>,
+    /// Peers which have produced a value for us
+    pub resolved_peers: HashMap<PeerId, WorkResult>,
+}
+
+impl WorkUnit {
+
+    /// Do we have enough information to provide a satisfying result ?
+    pub fn is_resolved(&self) -> bool {
+        // TODO: Beter heuristic here
+        self.resolved_peers.len() > 0
+    }
+
+    /// Returns most probable result of this work, if it is resolved
+    pub fn result(&mut self) -> Option<&mut WorkResult> {
+        if self.is_resolved() {
+            return self.resolved_peers.iter_mut().next().map(|v| v.1);
+        }
+        None
+    }
+
+    /// Work unit is stuck, because all the peers rejected it
+    pub fn is_stuck(&self) -> bool {
+        self.rejected_peers.len() >= self.contacted_peers.len()
+    }
+}
+
 pub struct Workswap {
     // Allows us to dispatch event from a lot of places
     events: VecDeque<NetworkBehaviourAction<Message, WorkswapEvent>>,
     pub peers: HashMap<PeerId, PeerStats>,
 
-    pub return_channels: HashMap<ExecutionID, OneSender<Result<String, String>>>,
+    pub works: HashMap<ExecutionID, WorkUnit>,
 
     pub queued_local_execs: UnboundedSender<(PeerId, ExecutionResult)>,
     pub finished_local_execs: UnboundedReceiver<(PeerId, ExecutionResult)>,
@@ -169,14 +209,15 @@ impl Workswap {
             peers: HashMap::new(),
             events: VecDeque::new(),
 
-            return_channels: HashMap::new(),
+            works: HashMap::new(),
 
             queued_local_execs: tx,
             finished_local_execs: rx,
         }
     }
 
-    pub fn connect(&mut self, peer_id: PeerId) {
+    pub fn connect(&mut self, _peer_id: PeerId) {
+        /*
         if !self.peers.contains_key(&peer_id) {
             let ev = NetworkBehaviourAction::DialPeer {
                 peer_id,
@@ -184,6 +225,7 @@ impl Workswap {
             };
             self.events.push_back(ev);
         }
+        */
     }
 
     fn resolve_execution(&mut self, peer_id: &PeerId, exec: ExecutionResult) {
@@ -199,8 +241,9 @@ impl Workswap {
         self.peers.get_mut(peer_id).expect("Peer not found").accept(id);
     }
 
-    /// We want to execute a function, and pick first usable peer.
+    /// We want to execute a function, and pick a reasonable set of peers.
     pub fn want_exec(&mut self, method: Cid, args: Vec<Cid>, ret: OneSender<Result<String, String>>) {
+        // TODO: Use proper multihash, not hashing of strings here
         let mut id = multihash::Sha2_256::default();
         id.input(method.as_bytes());
         for i in &args {
@@ -217,18 +260,29 @@ impl Workswap {
         if peers.len() == 0 {
             return ret.send(Err("No peers".to_string())).unwrap();
         }
-        let (peer, stats) = &mut peers[0];
-        log::info!("Sending {} to {}", method, peer);
-        // TODO: Use proper multihash, not hashing of strings here
 
         let req = ExecutionRequest {
             // TODO: Adopt multihashes
             id: id.clone(),
-            method: method,
-            args: args,
+            method: method.clone(),
+            args: args.clone(),
         };
-        stats.add_request(req);
-        self.return_channels.insert(id, ret);
+
+        let mut work_unit = WorkUnit {
+            ret_chan: ret,
+            started: std::time::Instant::now(),
+            contacted_peers: HashSet::new(),
+            rejected_peers: HashSet::new(),
+            resolved_peers: HashMap::new(),
+        };
+
+        let max_peers = cmp::min(3, peers.len());
+        for (peer, stats) in &mut peers[0..max_peers] {
+            stats.add_request(req.clone());
+            work_unit.contacted_peers.insert(peer.clone());
+            log::info!("Sending {} to {}", method, peer);
+        }
+        self.works.insert(id, work_unit);
     }
 
     pub fn handle_control_mesage(&mut self, msg: crate::IPCSCommand) {
@@ -247,6 +301,7 @@ pub enum WorkswapEvent {
     Accepted(PeerId, ExecutionID),
     Rejected(PeerId, ExecutionID),
     Completed(PeerId, ExecutionID, Cid),
+    Failed(PeerId, ExecutionID, String),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -259,7 +314,7 @@ pub struct ExecutionRequest {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionResult {
     pub id: ExecutionID,
-    pub hash: Cid,
+    pub result: Result<Cid, String>,
 }
 
 impl NetworkBehaviour for Workswap {
@@ -284,6 +339,7 @@ impl NetworkBehaviour for Workswap {
         self.peers.remove(peer_id);
     }
 
+    // TODO: Protocol internal handling of multiple workers for single work unit & result heuristics
     fn inject_event(&mut self, peer_id: PeerId, _connection: ConnectionId, message: Message) {
         log::info!("message: {:?}", message);
         let stats = self.peers.get_mut(&peer_id).expect("Peer not found");
@@ -291,6 +347,12 @@ impl NetworkBehaviour for Workswap {
         for id in message.rejects {
             log::info!("Peer {:?} rejected execution {:?}", &peer_id, id);
             stats.running_there.remove(&id);
+            let work = self.works.get_mut(&id);
+
+            if let Some(work) = work {
+                work.rejected_peers.insert(peer_id.clone());
+            }
+
             self.events
                 .push_back(NetworkBehaviourAction::GenerateEvent(WorkswapEvent::Rejected(peer_id.clone(), id)));
         }
@@ -305,8 +367,12 @@ impl NetworkBehaviour for Workswap {
         for res in message.results {
             log::info!("Peer {:?} finished execution {:?}", peer_id, res);
             stats.running_there.remove(&res.id);
-            let ev = WorkswapEvent::Completed(peer_id.clone(), res.id, res.hash);
-            self.events.push_back(NetworkBehaviourAction::GenerateEvent(ev));
+
+            let event = match res.result {
+                Ok(v) => WorkswapEvent::Completed(peer_id.clone(), res.id, v),
+                Err(e) => WorkswapEvent::Failed(peer_id.clone(), res.id, e),
+            };
+            self.events.push_back(NetworkBehaviourAction::GenerateEvent(event));
         }
 
         let reported = message.running.into_iter().collect();

@@ -38,7 +38,7 @@ impl NetworkBehaviourEventProcess<()> for Behaviour {
 
 impl NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour {
     fn inject_event(&mut self, event: IdentifyEvent) {
-        log::info!("identify: {:?}", event);
+        log::trace!("identify: {:?}", event);
     }
 }
 
@@ -48,10 +48,16 @@ impl NetworkBehaviourEventProcess<workswap::WorkswapEvent> for Behaviour {
         match event {
             WorkswapEvent::Completed(peer, id, res) => {
                 log::debug!("Peer {} finished work on {} res: {}", peer, id, res);
-                if let Some(ret) = self.workswap.return_channels.remove(&id) {
+                if let Some(ret) = self.workswap.works.remove(&id) {
                     tokio::spawn(async move {
-                        ret.send(Ok(res)).unwrap();
+                        ret.ret_chan.send(Ok(res)).unwrap();
                     });
+                }
+            }
+            WorkswapEvent::Failed(peer, id, error) => {
+                log::debug!("Peer {} failed to finish {} with error: {}", peer, id, error);
+                if let Some(ret) = self.workswap.works.remove(&id) {
+                    ret.ret_chan.send(Err(error)).unwrap();
                 }
             }
             WorkswapEvent::WantCalc(peer, id, method, args) => {
@@ -61,8 +67,11 @@ impl NetworkBehaviourEventProcess<workswap::WorkswapEvent> for Behaviour {
                 let mut fin = self.workswap.queued_local_execs.clone();
                 tokio::spawn(async move {
                     let args = args.iter().map(AsRef::as_ref).collect::<Vec<_>>();
-                    let res = crate::exec(&ipfs, &method, &args).await.unwrap();
-                    let res = ExecutionResult { id, hash: res };
+                    let res = crate::exec(&ipfs, &method, &args).await;
+
+                    // Simple error reporting to remote node
+                    // TODO: Fix this crap
+                    let res = ExecutionResult { id, result: res.map_err(|e| e.to_string()) };
                     fin.send((peer, res)).await.unwrap();
                 });
             }
@@ -150,7 +159,7 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
         };
         struct Exec;
         impl libp2p::core::Executor for Exec {
-            fn exec(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) {
+            fn exec(&self, future: Pin<Box<dyn Future<Output=()> + Send>>) {
                 tokio::spawn(future);
             }
         }
@@ -183,6 +192,6 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
 
             Poll::Pending
         })
-        .await;
+            .await;
     }
 }

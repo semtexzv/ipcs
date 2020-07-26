@@ -1,6 +1,6 @@
 use wasmer::*;
 
-pub type Result<T, E = Box<dyn std::error::Error>> = std::result::Result<T, E>;
+pub use anyhow::Result;
 
 fn _ipcs_arg_count(ctx: &mut Ctx) -> u32 {
     println!("_ipcs_arg_count");
@@ -52,7 +52,7 @@ struct IoData<'a> {
 /// Execute wasm module (which is expected to conform to ipcs platform
 /// along with a list of arguments (arguments provided here are raw buffers). At this layer we don't care about IPFS
 /// TODO: Introduce file-like abstraction to support streaming processing of data.
-pub fn exec(wasm: &[u8], args: &[&[u8]]) -> Result<Vec<u8>> {
+pub fn exec(wasm: &[u8], args: &[&[u8]]) -> Result<Vec<u8>, wasmer::error::Error> {
     let imports = imports! {
         "_ipcs" => {
             "_ipcs_arg_count" => func!(_ipcs_arg_count),

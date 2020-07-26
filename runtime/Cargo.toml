@@ -1,6 +1,6 @@
 [package]
 name = "ipcs-runtime"
-version = "0.0.1-alpha.1"
+version = "0.0.1"
 authors = ["Michal Hornicky <semtexzv@gmail.com>"]
 repository = "https://github.com/semtexzv/ipcs"
 description = "Runtime shim for IPCS functions written in rust"
@@ -11,6 +11,6 @@ edition = "2018"
 
 [dependencies.codegen]
 package = "ipcs-codegen"
-version = "0.0.1-alpha.1"
+version = "0.0.1"
 
 [dependencies]
