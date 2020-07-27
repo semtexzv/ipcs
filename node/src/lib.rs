@@ -8,6 +8,7 @@ use futures::channel::{mpsc::unbounded, oneshot::Sender};
 
 use executor::Result;
 use std::sync::Arc;
+use std::str::FromStr;
 
 pub mod api;
 pub mod net;
@@ -32,7 +33,7 @@ pub async fn exec(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> 
 
         executor::exec(wasm.unwrap().as_ref(), &args).unwrap()
     })
-    .await?;
+        .await?;
 
     let hash = api.add(bytes::Bytes::from(res)).await?;
     return Ok(hash);
@@ -44,6 +45,8 @@ pub struct NodeConfig {
     pub no_api: bool,
     /// URL pointing to IPFS node
     pub ipfs_url: String,
+    /// Bootstrap multiaddrs
+    pub bootstrap_nodes: Vec<String>,
 }
 
 impl Default for NodeConfig {
@@ -51,6 +54,7 @@ impl Default for NodeConfig {
         Self {
             no_api: false,
             ipfs_url: format!("http://localhost:5001"),
+            bootstrap_nodes: vec![],
         }
     }
 }
@@ -66,5 +70,7 @@ pub async fn run(config: NodeConfig) {
         tokio::spawn(api::run(api.clone(), tx));
     }
 
-    tokio::spawn(net::run(api.clone(), rx)).await.unwrap()
+    let bootstrap = config.bootstrap_nodes.into_iter().map(|v| libp2p::multiaddr::Multiaddr::from_str(&v).unwrap()).collect();
+
+    tokio::spawn(net::run(api.clone(), bootstrap, rx)).await.unwrap()
 }

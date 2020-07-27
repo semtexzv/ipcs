@@ -16,10 +16,8 @@ use tokio::macros::support::Pin;
 
 use ipfsapi::IpfsApi;
 
-//mod peerstore;
 mod workswap;
 
-//use peerstore::*;
 use workswap::{ExecutionResult, Workswap, WorkswapEvent};
 use std::collections::HashMap;
 use futures::channel::oneshot::Sender;
@@ -48,9 +46,11 @@ pub struct Behaviour {
     queries: HashMap<QueryId, QueryType>,
     /// Used to find peers on local network
     mdns: Mdns,
+    kad: Kademlia<MemoryStore>,
+    #[behaviour(ignore)]
+    kad_bootstrapped: bool,
     ping: Ping,
     identify: Identify,
-    kad: Kademlia<MemoryStore>,
     /// Behavior responsible for actually sending work to other nodes
     workswap: Workswap,
 }
@@ -65,8 +65,9 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for Behaviour {
             MdnsEvent::Discovered(list) => {
                 for (peer, addr) in list {
                     log::trace!("mdns: Discovered peer {} on {:?}", peer.to_base58(), &addr);
+                    self.kad.add_address(&peer, addr);
                     // Workswap is core logic behavior, it handles connecting to new peers
-                    self.workswap.connect(peer);
+                    // self.workswap.connect(peer);
                 }
             }
             MdnsEvent::Expired(_) => {}
@@ -150,13 +151,13 @@ impl Behaviour {
 
     fn kademlia_resolved(&mut self, id: QueryId, result: QueryResult) {
         match (self.queries.remove(&id), result) {
-            (Some(QueryType::Workswap(eid, method, args)), QueryResult::GetClosestPeers(Ok(peers))) => {
+            (Some(QueryType::Workswap(eid, method, args)), QueryResult::GetClosestPeers(Ok(_peers))) => {
                 self.workswap.want_exec(eid, method, args)
             }
-            (_, QueryResult::GetClosestPeers(Err(timeout))) => {
+            (_, QueryResult::GetClosestPeers(Err(_timeout))) => {
                 log::error!("Timed our resolving kademlia nodes");
             }
-            (None, v) => {}
+            (None, _v) => {}
             (_, v) => {
                 log::info!("Unknown kademlia query resolved : {:?}", v)
             }
@@ -171,7 +172,7 @@ impl Behaviour {
     }
 }
 
-pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSCommand>) {
+pub async fn run(ipfs: Arc<IpfsApi>, bootstrap: Vec<Multiaddr>, mut control: UnboundedReceiver<crate::IPCSCommand>) {
     let local_key = identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
     log::info!("Local peer id: {:?}", local_peer_id);
@@ -183,13 +184,15 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
         let mut kad_cfg = KademliaConfig::default();
         kad_cfg.set_protocol_name(&b"/ipcs/0.0.0"[..]);
         let kad = Kademlia::with_config(local_peer_id.clone(), MemoryStore::new(local_peer_id.clone()), kad_cfg);
+
         let behavior = Behaviour {
             ipfs,
             works: HashMap::new(),
             queries: HashMap::new(),
             mdns: Mdns::new().unwrap(),
+            kad,
+            kad_bootstrapped : false,
             ping: Ping::new(PingConfig::new()),
-            kad: kad,
             identify: Identify::new("/ipcs/0.0.0".into(), "rust-ipcs/0.0.0".into(), local_key.clone().public()),
             workswap: workswap::Workswap::new(),
         };
@@ -208,6 +211,11 @@ pub async fn run(ipfs: Arc<IpfsApi>, mut control: UnboundedReceiver<crate::IPCSC
     };
 
     Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+
+
+    for a in bootstrap {
+        Swarm::dial_addr(&mut swarm, a).unwrap();
+    }
 
     loop {
         poll_fn(|ctx| -> Poll<Option<()>> {

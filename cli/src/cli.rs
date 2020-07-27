@@ -5,6 +5,12 @@ fn node_cmd() -> clap::App<'static, 'static> {
         .about("Runs the IPCS node")
         .version("0.0.0")
         .arg(Arg::with_name("no-api").long("no-api").short("n").help("Disable built-in HTTP API"))
+        .arg(Arg::with_name("bootstrap-node")
+            .long("bootstrap-node")
+            .short("b")
+            .takes_value(true)
+            .help("Add node to bootstrap list")
+        )
 }
 
 fn exec_cmd() -> clap::App<'static, 'static> {
@@ -39,6 +45,7 @@ pub fn fun_cmd() -> clap::App<'static, 'static> {
             SubCommand::with_name("deploy")
         )
 }
+
 pub fn app() -> clap::App<'static, 'static> {
     App::new("IPCS cli interface")
         .version("0.0.0")

@@ -17,6 +17,8 @@ async fn main() {
                 .value_of("ipfs-url")
                 .map(ToString::to_string)
                 .unwrap_or_else(|| NodeConfig::default().ipfs_url),
+            bootstrap_nodes: matches.values_of_lossy("bootstrap-node")
+                .unwrap_or_else(||vec![])
         };
 
         return ipcs_node::run(config).await;
