@@ -21,7 +21,7 @@ version = "0.0.2"
 
 [dependencies.libp2p]
 default-features = false
-version = "=0.22.0"
+version = "=0.28.1"
 features = [
 "deflate",
 "dns",
