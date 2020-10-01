@@ -1,0 +1,12 @@
+[Unit]
+Description=IPCS service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/ipcs node -l /ip4/0.0.0.0/tcp/4321
+Type=simple
+Restart=Always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

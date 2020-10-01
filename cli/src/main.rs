@@ -4,7 +4,7 @@ pub mod cli;
 
 #[tokio::main]
 async fn main() {
-    std::env::set_var("RUST_LOG", "ipcs_node=debug,libp2p_swarm=trace,info");
+    std::env::set_var("RUST_LOG", "ipcs_node=debug,libp2p_kad=debug,libp2p_bitswap=trace,libp2p_tcp=trace,libp2p_swarm=trace,info");
     env_logger::init();
 
     let matches = cli::app().get_matches();
@@ -18,7 +18,9 @@ async fn main() {
                 .map(ToString::to_string)
                 .unwrap_or_else(|| NodeConfig::default().ipfs_url),
             bootstrap_nodes: matches.values_of_lossy("bootstrap-node")
-                .unwrap_or_else(||vec![])
+                .unwrap_or(vec![]),
+            listen_on: matches.values_of_lossy("listen")
+                .unwrap_or(vec![])
         };
 
         return ipcs_node::run(config).await;

@@ -1,19 +1,9 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::convert::TryFrom;
-use std::pin::Pin;
+use crate::prelude::*;
 
-use futures::channel::{
-    mpsc::{unbounded, UnboundedReceiver, UnboundedSender},
-    oneshot::Sender as OneSender,
-};
-use futures::task::{Context, Poll};
-use futures::{AsyncRead, AsyncWrite, Future, FutureExt, StreamExt};
 use libp2p::{
-    core::{connection::ConnectionId, upgrade, InboundUpgrade, Multiaddr, OutboundUpgrade, PeerId, UpgradeInfo},
-    swarm::{NetworkBehaviour, NetworkBehaviourAction, OneShotHandler, NotifyHandler, PollParameters, DialPeerCondition},
+    core::{connection::ConnectionId, InboundUpgrade, Multiaddr, OutboundUpgrade, PeerId, upgrade, UpgradeInfo},
+    swarm::{DialPeerCondition, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, OneShotHandler, PollParameters},
 };
-use multihash::MultihashDigest;
-use std::cmp;
 
 type FutureResult<T, E> = Pin<Box<dyn Future<Output=Result<T, E>> + Send>>;
 
@@ -21,7 +11,7 @@ type Error = anyhow::Error;
 
 #[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Message {
-    // Persistent fiel
+    // Persistent field
     running: Vec<ExecutionID>,
 
     // Transient fields
@@ -147,7 +137,7 @@ impl PeerInfo {
     }
 
     /// Do we have new information we need to send to this peer ?
-    pub fn ready_to_send(&mut self) -> Option<Message> {
+    pub fn create_message(&mut self) -> Option<Message> {
         if self.message.is_empty() {
             return None;
         }
@@ -157,7 +147,7 @@ impl PeerInfo {
     }
 }
 
-pub type WorkResult = Result<Cid, String>;
+pub type WorkResult = Result<cid::Cid, String>;
 
 /// Struct containing metdata about work that this node has dispatched to the network
 pub struct WorkInfo {
@@ -199,24 +189,16 @@ pub struct Workswap {
     pub peers: HashMap<PeerId, PeerInfo>,
     // Information about dispatched work units
     pub works: HashMap<ExecutionID, WorkInfo>,
-
-    // Used here as a queue to send work results from worker tasks to protocol implementation
-    pub queued_works: UnboundedSender<(PeerId, ExecutionResult)>,
-    pub finished_works: UnboundedReceiver<(PeerId, ExecutionResult)>,
 }
 
 impl Workswap {
     pub fn new() -> Self {
-        let (tx, rx) = unbounded();
-
         Self {
             peers: HashMap::new(),
             events: VecDeque::new(),
 
             works: HashMap::new(),
 
-            queued_works: tx,
-            finished_works: rx,
         }
     }
 
@@ -231,9 +213,15 @@ impl Workswap {
         }
     }
 
-    fn finish_work(&mut self, peer_id: &PeerId, exec: ExecutionResult) {
-        let stats = self.peers.get_mut(peer_id).expect("Peer not found");
-        stats.add_result(exec);
+    pub fn finish_work(&mut self, id : ExecutionID, res: WorkResult) {
+        for (_, stats) in self.peers.iter_mut() {
+            if stats.running_here.contains(&id) {
+                stats.add_result(ExecutionResult {
+                    id: id.clone(),
+                    result : res.clone().map(|v| v.to_string())
+                })
+            }
+        }
     }
 
 
@@ -254,7 +242,6 @@ impl Workswap {
         // Some randomness factor. find by hamming distance between work hash and node id
         let mut peers = self.peers.iter_mut().collect::<Vec<_>>();
 
-
         peers.sort_by_key(|(f, _)| hamming::distance(&f.as_ref()[..8], &id.as_bytes()[..8]));
 
         if peers.len() == 0 {
@@ -264,8 +251,8 @@ impl Workswap {
         let req = ExecutionRequest {
             // TODO: Adopt multihashes
             id: id.clone(),
-            method: method.clone(),
-            args: args.clone(),
+            method: method.to_string(),
+            args: args.iter().map(ToString::to_string).collect(),
         };
 
         let mut work_unit = WorkInfo {
@@ -286,30 +273,34 @@ impl Workswap {
 }
 
 pub type ExecutionID = String;
-pub type Cid = String;
 
 #[derive(Debug)]
 pub enum WorkswapEvent {
+    // Someone wants us to perform calculation locally
     WantCalc(PeerId, ExecutionID, Cid, Vec<Cid>),
 
+    // Contacted peer either accepted or rejected work
     Accepted(PeerId, ExecutionID),
     Rejected(PeerId, ExecutionID),
 
+    // We have enough results to confidently resolve the work unit
     Resolved(ExecutionID, Result<Cid, String>),
+    // Local error has occured
     LocalErr(ExecutionID, String),
 }
+
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionRequest {
     pub id: ExecutionID,
-    pub method: Cid,
-    pub args: Vec<Cid>,
+    pub method: String,
+    pub args: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionResult {
     pub id: ExecutionID,
-    pub result: Result<Cid, String>,
+    pub result: Result<String, String>,
 }
 
 impl NetworkBehaviour for Workswap {
@@ -356,7 +347,9 @@ impl NetworkBehaviour for Workswap {
         for req in message.requests {
             log::info!("Peer {:?} requested execution of {:#?}", &peer_id, req);
             stats.running_here.insert(req.id.clone());
-            let ev = WorkswapEvent::WantCalc(peer_id.clone(), req.id, req.method, req.args);
+            let method = Cid::from_str(&req.method).unwrap();
+            let args = req.args.iter().map(|v| FromStr::from_str(v)).collect::<Result<Vec<_>, _>>().unwrap();
+            let ev = WorkswapEvent::WantCalc(peer_id.clone(), req.id, method, args);
             self.events.push_back(NetworkBehaviourAction::GenerateEvent(ev));
         }
 
@@ -367,7 +360,7 @@ impl NetworkBehaviour for Workswap {
             use std::collections::hash_map::Entry;
             if let Entry::Occupied(mut entry) = self.works.entry(received.id.clone()) {
                 let work = entry.get_mut();
-                work.resolved_peers.insert(peer_id.clone(), received.result);
+                //work.resolved_peers.insert(peer_id.clone(), received.result);
 
                 log::info!("Work: {} has {} / {} results ({}) rejects", received.id,
                     work.resolved_peers.len(),
@@ -392,18 +385,13 @@ impl NetworkBehaviour for Workswap {
         }
     }
 
-    fn poll(&mut self, ctx: &mut Context, _: &mut impl PollParameters) -> Poll<NetworkBehaviourAction<Message, Self::OutEvent>> {
-        while let Poll::Ready(Some((peer, exec))) = self.finished_works.poll_next_unpin(ctx) {
-            log::info!("send exec res: {:?} {:?}", peer, exec);
-            self.finish_work(&peer, exec);
-        }
-
+    fn poll(&mut self, _ctx: &mut Context, _: &mut impl PollParameters) -> Poll<NetworkBehaviourAction<Message, Self::OutEvent>> {
         if let Some(event) = self.events.pop_front() {
             return Poll::Ready(event);
         }
 
         for (peer, stats) in self.peers.iter_mut() {
-            if let Some(msg) = stats.ready_to_send() {
+            if let Some(msg) = stats.create_message() {
                 return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
                     peer_id: peer.clone(),
                     handler: NotifyHandler::Any.clone(),
