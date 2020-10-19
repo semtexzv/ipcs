@@ -3,19 +3,19 @@ use wasmer::*;
 pub use anyhow::Result;
 
 fn _ipcs_arg_count(ctx: &mut Ctx) -> u32 {
-    println!("_ipcs_arg_count");
+    trace!("_ipcs_arg_count");
     let data = ctx.data.cast::<IoData>();
     (unsafe { &*data }).args.len() as _
 }
 
 fn _ipcs_arg_len(ctx: &mut Ctx, idx: u32) -> u32 {
-    println!("_ipcs_arg_len: {}", idx);
+    trace!("_ipcs_arg_len: {}", idx);
     let data = ctx.data.cast::<IoData>();
     (unsafe { &*data }).args[idx as usize].len() as u32
 }
 
 fn _ipcs_arg_read(ctx: &mut Ctx, idx: u32, ptr: u32, offset: u32, len: u32) -> u32 {
-    println!("_ipcs_arg_read: {}, {}, {}, {}", idx, ptr, offset, len);
+    trace!("_ipcs_arg_read: {}, {}, {}, {}", idx, ptr, offset, len);
     let data = ctx.data.cast::<IoData>();
     let arg = (unsafe { &*data }).args[idx as usize];
 

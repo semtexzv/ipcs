@@ -32,8 +32,7 @@ pub async fn exec(api: &IpfsApi, method: &str, args: &[&str]) -> Result<String> 
         let args = args.iter().map(|v| v.as_ref()).collect::<Vec<_>>();
 
         executor::exec(wasm.unwrap().as_ref(), &args).unwrap()
-    })
-        .await?;
+    }).await?;
 
     let hash = api.add(bytes::Bytes::from(res)).await?;
     return Ok(hash);
