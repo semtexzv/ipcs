@@ -1,4 +1,5 @@
 use wasmer::*;
+use log::*;
 
 pub use anyhow::Result;
 

@@ -7,9 +7,8 @@ description = "IPCS worker node - provides HTTP API & uses libp2p for communicat
 license = "MIT"
 edition = "2018"
 
-[dependencies.ipfsapi]
-package = "semtexzv-ipfsapi"
-version = "=0.4.1-alpha.2"
+[dependencies.ipfs]
+version = "*"
 
 [dependencies.executor]
 package = "ipcs-executor"
@@ -19,38 +18,17 @@ version = "0.0.2"
 package = "ipcs-apidefs"
 version = "0.0.2"
 
-[dependencies.libp2p]
-default-features = false
-version = "=0.28.1"
-features = [
-"deflate",
-"dns",
-"floodsub",
-"identify",
-"kad",
-"gossipsub",
-"mdns-tokio",
-"mplex",
-"noise",
-"ping",
-"plaintext",
-"request-response",
-"noise",
-"secp256k1",
-"tcp-tokio",
-#"tcp-async-std",
-"wasm-ext",
-"websocket",
-"yamux",
-]
+[dependencies.astd]
+package = "async-std"
+version = "1.6.5"
+features = ["attributes", "alloc", "std", "tokio02"]
 
 [dependencies]
 anyhow = "1.0.32"
 void = "1.0.2"
-warp = "0.2"
+tide = "*"
 serde = { version = "1", features = ["derive"]}
 serde_json = "1.0.56"
-tokio = { version = "0.2", default-features = false, features = ["rt-threaded", "blocking", "macros"] }
 futures = "0.3.5"
 bytes = "0.5.6"
 libc = "0.2.73"

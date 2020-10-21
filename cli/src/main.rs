@@ -13,10 +13,6 @@ async fn main() {
 
         let config = NodeConfig {
             no_api: matches.is_present("no-api"),
-            ipfs_url: matches
-                .value_of("ipfs-url")
-                .map(ToString::to_string)
-                .unwrap_or_else(|| NodeConfig::default().ipfs_url),
             bootstrap_nodes: matches.values_of_lossy("bootstrap-node")
                 .unwrap_or_else(||vec![])
         };
