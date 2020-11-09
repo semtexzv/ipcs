@@ -11,7 +11,8 @@ use futures::channel::{mpsc::unbounded, oneshot::Sender};
 
 use std::sync::Arc;
 use std::str::FromStr;
-use ipfs::{IpfsOptions, UninitializedIpfs, Cid};
+use ipfs::{IpfsOptions, UninitializedIpfs, Cid, Block, MultiaddrWithPeerId};
+use multihash::Code;
 
 //pub mod api;
 //pub mod net;
@@ -32,7 +33,7 @@ pub enum IPCSCommand {
 
 /// Executes function identified by [arg] has against arguments identified
 /// by [arg] hashes
-pub async fn exec(ipfs: &Ipfs, method: &str, args: &[&str]) -> Result<String> {
+pub async fn exec(ipfs: &Ipfs, method: &str, args: &[&str]) -> Result<cid::Cid> {
     let method = Cid::from_str(method).unwrap();
     let method = ipfs.get_block(&method);
     let args = args.iter()
@@ -52,11 +53,17 @@ pub async fn exec(ipfs: &Ipfs, method: &str, args: &[&str]) -> Result<String> {
         executor::exec(wasm.unwrap().data.as_ref(), &args).unwrap()
     }).await;
 
-    return Ok(unimplemented!());
-    //let hash = api.add(bytes::Bytes::from(res)).await?;
-    //return Ok(hash);
+    let cid = Cid::new_v1(cid::Codec::Raw, multihash::Sha2_256::digest(&res));
+    let block = Block::new(res.into_boxed_slice(), cid);
+    let cid = ipfs.put_block(block).await?;
+
+    ipfs.insert_pin(&cid,true).await.unwrap();
+    ipfs.provide(cid.clone()).await.unwrap();
+
+    return Ok(cid);
 }
 
+#[derive(Debug)]
 /// Configuration of IPCS node.
 pub struct NodeConfig {
     /// Disable the provided HTTP API
@@ -76,7 +83,12 @@ impl Default for NodeConfig {
 
 /// Run the node with provided config. Future should never resolve
 pub async fn run(config: NodeConfig) {
-    let ipfs = IpfsOptions::inmemory_with_generated_keys();
+    log::info!("Starting node, config: {:?}", config);
+    let mut ipfs = IpfsOptions::inmemory_with_generated_keys();
+    for a in &config.bootstrap_nodes {
+        let addr = MultiaddrWithPeerId::from_str(a).unwrap();
+        ipfs.bootstrap.push((addr.multiaddr.into(), addr.peer_id));
+    }
     let (ipfs, worker): (Ipfs, _) = UninitializedIpfs::new(ipfs).start().await.unwrap();
     astd::task::spawn(worker);
     api::run(ipfs.clone()).await.unwrap();

@@ -11,7 +11,7 @@ pub async fn exec(mut req: tide::Request<State>) -> tide::Result {
     let res = crate::exec(&req.state().ipfs.clone(), &data.method, &args).await?;
 
     let resp = ExecResp {
-        hash: res
+        hash: res.to_string(),
     };
 
     Ok(tide::Response::from(serde_json::to_value(&resp)?))
